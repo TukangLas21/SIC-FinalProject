@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The Room (Lab) Entity
+model Room {
+  id             String      @id @default(cuid())
+  name           String      // e.g., "Microbio Lab A"
+  description    String?
+  
+  // BSL Configuration
+  bslLevel       BSLLevel    @default(BSL_1)
+  targetPressure Float       @default(0.0) // Pascals (e.g. -15.0)
+  targetTemp     Float       @default(24.0) // Celsius
+  
+  // Relations
+  components     Component[]
+  sensorLogs     SensorLog[]
+  usageLogs      UsageLog[]
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+// Hardware Components (Actuators & Sensors) inside a room
+model Component {
+  id          String        @id @default(cuid())
+  name        String        // e.g., "Main Exhaust Fan"
+  type        ComponentType // EXHAUST, AC, DOOR, etc.
+  
+  // State
+  isActive    Boolean       @default(false)
+  setting     Float?        // e.g., Fan Speed (PWM %) or AC Temp
+  
+  // Relations
+  roomId      String
+  room        Room          @relation(fields: [roomId], references: [id])
+  
+  // If this component monitors power, we log it here
+  powerLogs   PowerLog[]
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// High-Frequency Sensor Data (Written by Python Service)
+model SensorLog {
+  id          Int      @id @default(autoincrement()) // Int is faster for massive logs
+  
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+
+  // The Readings
+  pressure    Float    // Pascals
+  temperature Float    // Celsius
+  humidity    Float    // %
+  co2Level    Float?   // PPM (Optional)
+  
+  // Machine Learning Results
+  anomalyStatus String? // "NORMAL", "LEAK", "CLOG"
+  
+  createdAt   DateTime @default(now()) // Timestamp
+  
+  @@index([roomId, createdAt]) // Optimize query speed for graphs
+}
+
+// Power Usage for specific components
+model PowerLog {
+  id          Int       @id @default(autoincrement())
+  
+  componentId String
+  component   Component @relation(fields: [componentId], references: [id])
+  
+  voltage     Float     // Volts
+  current     Float     // Amps
+  power       Float     // Watts (V * I)
+  
+  createdAt   DateTime  @default(now())
+}
+
+// Administrative Logs (Who used the room?)
+model UsageLog {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id])
+  
+  userName  String   // e.g., "Dr. Strange"
+  activity  String   // e.g., "Sample Analysis"
+  
+  startTime DateTime @default(now())
+  endTime   DateTime?
+}
+
+// Enums
+enum BSLLevel {
+  BSL_1
+  BSL_2
+  BSL_3
+  BSL_4
+}
+
+enum ComponentType {
+  EXHAUST_FAN
+  INTAKE_FAN
+  AC_UNIT
+  DOOR_SENSOR
+  LIGHTING
+  OTHER
+}

@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bsl_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sic_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  hivemq:
+    image: hivemq/hivemq-ce:latest
+    container_name: bsl_hivemq
+    ports:
+      - "1883:1883" # Standard MQTT Port (TCP)
+      - "8080:8080" # HiveMQ Web UI 
+    volumes:
+      - ./infra/hivemq/conf:/opt/hivemq/conf
+      - ./infra/hivemq/data:/opt/hivemq/data
+      - ./infra/hivemq/log:/opt/hivemq/log
+
+volumes:
+  postgres_data:

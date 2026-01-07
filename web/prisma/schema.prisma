@@ -7,18 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// The Room (Lab) Entity
 model Room {
   id             String      @id @default(cuid())
   name           String      // e.g., "Microbio Lab A"
   description    String?
   
-  // BSL Configuration
   bslLevel       BSLLevel    @default(BSL_1)
   targetPressure Float       @default(0.0) // Pascals (e.g. -15.0)
   targetTemp     Float       @default(24.0) // Celsius
   
-  // Relations
   components     Component[]
   sensorLogs     SensorLog[]
   usageLogs      UsageLog[]
@@ -27,41 +24,34 @@ model Room {
   updatedAt      DateTime    @updatedAt
 }
 
-// Hardware Components (Actuators & Sensors) inside a room
 model Component {
   id          String        @id @default(cuid())
   name        String        // e.g., "Main Exhaust Fan"
   type        ComponentType // EXHAUST, AC, DOOR, etc.
   
-  // State
   isActive    Boolean       @default(false)
   setting     Float?        // e.g., Fan Speed (PWM %) or AC Temp
   
-  // Relations
   roomId      String
   room        Room          @relation(fields: [roomId], references: [id])
   
-  // If this component monitors power, we log it here
   powerLogs   PowerLog[]
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 }
 
-// High-Frequency Sensor Data (Written by Python Service)
 model SensorLog {
   id          Int      @id @default(autoincrement()) // Int is faster for massive logs
   
   roomId      String
   room        Room     @relation(fields: [roomId], references: [id])
 
-  // The Readings
   pressure    Float    // Pascals
   temperature Float    // Celsius
   humidity    Float    // %
-  co2Level    Float?   // PPM (Optional)
+  co2Level    Float?   // PPM
   
-  // Machine Learning Results
   anomalyStatus String? // "NORMAL", "LEAK", "CLOG"
   
   createdAt   DateTime @default(now()) // Timestamp
@@ -69,7 +59,6 @@ model SensorLog {
   @@index([roomId, createdAt]) // Optimize query speed for graphs
 }
 
-// Power Usage for specific components
 model PowerLog {
   id          Int       @id @default(autoincrement())
   
@@ -83,7 +72,6 @@ model PowerLog {
   createdAt   DateTime  @default(now())
 }
 
-// Administrative Logs (Who used the room?)
 model UsageLog {
   id        String   @id @default(cuid())
   roomId    String
@@ -96,7 +84,6 @@ model UsageLog {
   endTime   DateTime?
 }
 
-// Enums
 enum BSLLevel {
   BSL_1
   BSL_2
@@ -110,5 +97,9 @@ enum ComponentType {
   AC_UNIT
   DOOR_SENSOR
   LIGHTING
+  TEMPERATURE
+  HUMIDITY
+  AIR_PRESSURE
+  AIR_QUALITY
   OTHER
 }

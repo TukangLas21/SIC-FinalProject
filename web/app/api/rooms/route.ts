@@ -59,3 +59,28 @@ export async function GET() {
     );
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { name, description, bslLevel, targetPressure, targetTemp } = body;
+
+    const room = await prisma.room.create({
+      data: {
+        name,
+        description: description || null,
+        bslLevel: bslLevel || 'BSL_1',
+        targetPressure: targetPressure ?? 0.0,
+        targetTemp: targetTemp ?? 24.0,
+      },
+    });
+
+    return NextResponse.json(room);
+  } catch (error) {
+    console.error('Error creating room:', error);
+    return NextResponse.json(
+      { error: 'Failed to create room' },
+      { status: 500 }
+    );
+  }
+}

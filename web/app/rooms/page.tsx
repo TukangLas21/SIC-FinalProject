@@ -1,9 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -15,7 +15,8 @@ import ReactFlow, {
   ConnectionMode,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { AlertCircle, CheckCircle2, Wind, Thermometer } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Wind, Thermometer, Plus } from 'lucide-react';
+import AddRoomModal, { RoomFormData } from './_components/AddRoomModal';
 
 type Room = {
   id: string;
@@ -41,6 +42,8 @@ type Room = {
 
 export default function RoomsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   // Fetch rooms data
   const { data: rooms, isLoading } = useQuery<Room[]>({
@@ -48,6 +51,17 @@ export default function RoomsPage() {
     queryFn: async () => {
       const response = await axios.get('/api/rooms');
       return response.data;
+    },
+  });
+
+  // Create room mutation
+  const createRoomMutation = useMutation({
+    mutationFn: async (data: RoomFormData) => {
+      const response = await axios.post('/api/rooms', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
     },
   });
 
@@ -162,8 +176,14 @@ export default function RoomsPage() {
     return { initialNodes: nodes, initialEdges: edges };
   }, [rooms]);
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Update nodes and edges when rooms data changes
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -184,11 +204,20 @@ export default function RoomsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">Room Network</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Click on any room node to view details. Edges represent airflow direction.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">Room Network</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Click on any room node to view details. Edges represent airflow direction.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add Room
+        </button>
       </div>
 
       <div className="h-[calc(100vh-200px)] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
@@ -214,6 +243,15 @@ export default function RoomsPage() {
           />
         </ReactFlow>
       </div>
+
+      {/* Add Room Modal */}
+      <AddRoomModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSave={async (data) => {
+          await createRoomMutation.mutateAsync(data);
+        }}
+      />
     </div>
   );
 }

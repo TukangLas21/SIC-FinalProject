@@ -5,11 +5,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const components = await prisma.component.findMany({
-      where: { roomId: params.id },
+      where: { roomId: id },
       include: {
         powerLogs: {
           orderBy: { createdAt: 'desc' },
@@ -30,9 +31,10 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { name, type, isActive, setting } = body;
 
@@ -42,7 +44,7 @@ export async function POST(
         type,
         isActive: isActive ?? false,
         setting: setting ?? null,
-        roomId: params.id,
+        roomId: id,
       },
     });
 

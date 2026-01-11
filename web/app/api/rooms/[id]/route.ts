@@ -5,11 +5,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const room = await prisma.room.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         components: {
           include: {
@@ -31,7 +32,7 @@ export async function GET(
 
     // Get latest sensor reading
     const latestSensor = await prisma.sensorLog.findFirst({
-      where: { roomId: params.id },
+      where: { roomId: id },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -50,14 +51,15 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { bslLevel, targetPressure, targetTemp } = body;
 
     const room = await prisma.room.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(bslLevel && { bslLevel }),
         ...(targetPressure !== undefined && { targetPressure }),

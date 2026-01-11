@@ -194,6 +194,23 @@ export default function RoomsPage() {
     [router]
   );
 
+  // Enable manual connections between nodes
+  const onConnect = useCallback(
+    (connection: any) => {
+      setEdges((eds) => [
+        ...eds,
+        {
+          ...connection,
+          id: `manual-${connection.source}-${connection.target}`,
+          label: 'Custom Airflow',
+          style: { stroke: '#9333EA', strokeWidth: 2, strokeDasharray: '5,5' },
+          type: 'smoothstep',
+        },
+      ]);
+    },
+    [setEdges]
+  );
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -208,7 +225,7 @@ export default function RoomsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">Room Network</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Click on any room node to view details. Edges represent airflow direction.
+            Click nodes to view details. Drag from node handles to create custom airflow connections.
           </p>
         </div>
         <button
@@ -227,6 +244,7 @@ export default function RoomsPage() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
+          onConnect={onConnect}
           connectionMode={ConnectionMode.Loose}
           fitView
           attributionPosition="bottom-left"

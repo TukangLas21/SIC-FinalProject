@@ -1,0 +1,394 @@
+'use client';
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import { useRouter } from 'next/navigation';
+import { useCallback, useMemo, useState, useEffect } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  ConnectionMode,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { AlertCircle, CheckCircle2, Wind, Thermometer, Plus } from 'lucide-react';
+import AddRoomModal, { RoomFormData } from './_components/AddRoomModal';
+import ConnectionModal from './_components/ConnectionModal';
+
+type Room = {
+  id: string;
+  name: string;
+  description: string | null;
+  bslLevel: string;
+  targetPressure: number;
+  targetTemp: number;
+  currentPressure: number | null;
+  currentTemp: number | null;
+  anomalyStatus: string;
+  components: Array<{
+    id: string;
+    name: string;
+    type: string;
+    isActive: boolean;
+    setting: number | null;
+  }>;
+  _count: {
+    components: number;
+  };
+};
+
+type AirflowConnection = {
+  id: string;
+  sourceRoomId: string;
+  targetRoomId: string;
+  flowType: 'INTAKE' | 'EXHAUST' | 'TRANSFER';
+  flowRate: number | null;
+  isActive: boolean;
+  sourceRoom: { id: string; name: string };
+  targetRoom: { id: string; name: string };
+};
+
+export default function RoomsPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [pendingConnection, setPendingConnection] = useState<{ source: string; target: string } | null>(null);
+
+  // Fetch rooms data
+  const { data: rooms, isLoading } = useQuery<Room[]>({
+    queryKey: ['rooms'],
+    queryFn: async () => {
+      const response = await axios.get('/api/rooms');
+      return response.data;
+    },
+  });
+
+  // Fetch airflow connections
+  const { data: airflowConnections } = useQuery<AirflowConnection[]>({
+    queryKey: ['airflow-connections'],
+    queryFn: async () => {
+      const response = await axios.get('/api/airflow');
+      return response.data;
+    },
+  });
+
+  // 
+
+  // Create airflow connection mutation
+  const createAirflowMutation = useMutation({
+    mutationFn: async (data: { sourceRoomId: string; targetRoomId: string; flowType?: string }) => {
+      const response = await axios.post('/api/airflow', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['airflow-connections'] });
+    },
+  });
+  const createRoomMutation = useMutation({
+    mutationFn: async (data: RoomFormData) => {
+      const response = await axios.post('/api/rooms', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    },
+  });
+
+  // Generate nodes and edges for React Flow
+  const { initialNodes, initialEdges } = useMemo(() => {
+    if (!rooms || rooms.length === 0) {
+      return { initialNodes: [], initialEdges: [] };
+    }
+
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+
+    // Create a grid layout for rooms
+    const columns = Math.ceil(Math.sqrt(rooms.length));
+    const nodeWidth = 280;
+    const nodeHeight = 200;
+    const horizontalSpacing = 100;
+    const verticalSpacing = 150;
+
+    rooms.forEach((room, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+
+      const hasAnomaly = !!(room.anomalyStatus && room.anomalyStatus !== 'NORMAL');
+      const hasIntakeFan = room.components.some(c => c.type === 'INTAKE_FAN' && c.isActive);
+      const hasExhaustFan = room.components.some(c => c.type === 'EXHAUST_FAN' && c.isActive);
+
+      nodes.push({
+        id: room.id,
+        type: 'default',
+        position: {
+          x: col * (nodeWidth + horizontalSpacing),
+          y: row * (nodeHeight + verticalSpacing),
+        },
+        data: {
+          label: (
+            <RoomNode
+              room={room}
+              hasAnomaly={hasAnomaly}
+              hasIntakeFan={hasIntakeFan}
+              hasExhaustFan={hasExhaustFan}
+            />
+          ),
+        },
+        style: {
+          background: hasAnomaly ? '#FEE2E2' : '#F0F9FF',
+          border: `2px solid ${hasAnomaly ? '#DC2626' : '#3B82F6'}`,
+          borderRadius: '12px',
+          width: nodeWidth,
+          padding: 0,
+        },
+      });
+    });
+
+    // Add stored airflow connections from database
+    if (airflowConnections) {
+      airflowConnections.forEach((connection) => {
+        if (!connection.isActive) return;
+
+        const edgeStyle = 
+          connection.flowType === 'INTAKE' 
+            ? { stroke: '#10B981', strokeWidth: 2 }
+            : connection.flowType === 'EXHAUST'
+            ? { stroke: '#EF4444', strokeWidth: 2 }
+            : { stroke: '#8B5CF6', strokeWidth: 2, strokeDasharray: '5,5' };
+
+        edges.push({
+          id: connection.id,
+          source: connection.sourceRoomId,
+          target: connection.targetRoomId,
+          label: connection.flowType,
+          animated: true,
+          style: edgeStyle,
+          type: 'smoothstep',
+        });
+      });
+    }
+
+    return { initialNodes: nodes, initialEdges: edges };
+  }, [rooms, airflowConnections]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Update nodes and edges when rooms data changes
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  const onNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.id !== 'air-source' && node.id !== 'air-exhaust') {
+        router.push(`/rooms/${node.id}`);
+      }
+    },
+    [router]
+  );
+
+  // Enable manual connections between nodes - open modal to configure
+  const onConnect = useCallback(
+    (connection: any) => {
+      setPendingConnection({
+        source: connection.source,
+        target: connection.target,
+      });
+      setIsConnectionModalOpen(true);
+    },
+    []
+  );
+
+  // Handle connection save from modal
+  const handleConnectionSave = useCallback(
+    async (config: { flowType: string; flowRate: number | null; isActive: boolean }) => {
+      if (!pendingConnection) return;
+
+      // Optimistically add edge to UI
+      const tempEdge = {
+        id: `temp-${pendingConnection.source}-${pendingConnection.target}`,
+        source: pendingConnection.source,
+        target: pendingConnection.target,
+        label: config.flowType,
+        animated: true,
+        style:
+          config.flowType === 'INTAKE'
+            ? { stroke: '#10B981', strokeWidth: 2 }
+            : config.flowType === 'EXHAUST'
+            ? { stroke: '#EF4444', strokeWidth: 2 }
+            : { stroke: '#8B5CF6', strokeWidth: 2, strokeDasharray: '5,5' },
+        type: 'smoothstep',
+      };
+
+      setEdges((eds) => [...eds, tempEdge]);
+      setIsConnectionModalOpen(false);
+      setPendingConnection(null);
+
+      // Save to database
+      try {
+        await createAirflowMutation.mutateAsync({
+          sourceRoomId: pendingConnection.source,
+          targetRoomId: pendingConnection.target,
+          ...config,
+        });
+      } catch (error) {
+        console.error('Failed to create airflow connection:', error);
+        // Remove temp edge on error
+        setEdges((eds) => eds.filter((e) => e.id !== tempEdge.id));
+        alert('Failed to create connection. It may already exist.');
+      }
+    },
+    [pendingConnection, setEdges, createAirflowMutation]
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-gray-500">Loading rooms...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-50">Room Network</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Click nodes to view details. Drag from node handles to create custom airflow connections.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add Room
+        </button>
+      </div>
+
+      <div className="h-[calc(100vh-200px)] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          onConnect={onConnect}
+          connectionMode={ConnectionMode.Loose}
+          fitView
+          attributionPosition="bottom-left"
+        >
+          <Background color="#9CA3AF" gap={16} />
+          <Controls />
+          <MiniMap
+            nodeColor={(node) => {
+              if (node.id === 'air-source') return '#10B981';
+              if (node.id === 'air-exhaust') return '#EF4444';
+              const borderStr = typeof node.style?.border === 'string' ? node.style.border : '';
+              return borderStr.includes('#DC2626') ? '#FEE2E2' : '#3B82F6';
+            }}
+          />
+        </ReactFlow>
+      </div>
+
+      {/* Add Room Modal */}
+      <AddRoomModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSave={async (data) => {
+          await createRoomMutation.mutateAsync(data);
+        }}
+      />
+
+      {/* Connection Configuration Modal */}
+      <ConnectionModal
+        isOpen={isConnectionModalOpen}
+        sourceRoomName={
+          pendingConnection
+            ? rooms?.find((r) => r.id === pendingConnection.source)?.name || 'Unknown'
+            : ''
+        }
+        targetRoomName={
+          pendingConnection
+            ? rooms?.find((r) => r.id === pendingConnection.target)?.name || 'Unknown'
+            : ''
+        }
+        onClose={() => {
+          setIsConnectionModalOpen(false);
+          setPendingConnection(null);
+        }}
+        onSave={handleConnectionSave}
+      />
+    </div>
+  );
+}
+
+// Room Node Component
+function RoomNode({
+  room,
+  hasAnomaly,
+  hasIntakeFan,
+  hasExhaustFan,
+}: {
+  room: Room;
+  hasAnomaly: boolean;
+  hasIntakeFan: boolean;
+  hasExhaustFan: boolean;
+}) {
+  return (
+    <div className="p-4">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <h3 className="font-semibold text-gray-900">{room.name}</h3>
+          <p className="text-xs text-gray-500">{room.bslLevel.replace('_', '-')}</p>
+        </div>
+        {hasAnomaly ? (
+          <AlertCircle className="h-5 w-5 text-red-600" />
+        ) : (
+          <CheckCircle2 className="h-5 w-5 text-green-600" />
+        )}
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Thermometer className="h-4 w-4 text-blue-600" />
+          <span className="text-gray-700">
+            {room.currentTemp ? `${room.currentTemp.toFixed(1)}°C` : 'N/A'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <Wind className="h-4 w-4 text-cyan-600" />
+          <span className="text-gray-700">
+            {room.currentPressure ? `${room.currentPressure.toFixed(1)} Pa` : 'N/A'}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        {hasIntakeFan && (
+          <span className="rounded-full bg-green-100 px-2 py-1 text-xs text-green-700">
+            Intake
+          </span>
+        )}
+        {hasExhaustFan && (
+          <span className="rounded-full bg-red-100 px-2 py-1 text-xs text-red-700">
+            Exhaust
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2 text-xs text-gray-500">
+        {room._count.components} component(s)
+      </div>
+    </div>
+  );
+}

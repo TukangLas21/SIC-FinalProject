@@ -122,7 +122,24 @@ export default function RoomDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['room', roomId] });
     },
   });
-
+  // Control component mutation (sends command to Python service)
+  const controlComponentMutation = useMutation({
+    mutationFn: async ({ componentId, isActive, setting }: { componentId: string; isActive: boolean; setting?: number | null }) => {
+      const response = await axios.post(`/api/control/component/${componentId}`, {
+        isActive,
+        setting,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      // Invalidate to refetch updated component state
+      queryClient.invalidateQueries({ queryKey: ['room', roomId] });
+    },
+    onError: (error) => {
+      console.error('Control command failed:', error);
+      alert('Failed to send control command. Is the Python service running?');
+    },
+  });
   const handleSaveComponent = async (data: ComponentFormData) => {
     if (editingComponent) {
       await updateComponentMutation.mutateAsync({ id: editingComponent.id, data });
@@ -284,6 +301,13 @@ export default function RoomDetailPage() {
                   deleteComponentMutation.mutate(component.id);
                 }
               }}
+              onControl={(isActive, setting) => {
+                controlComponentMutation.mutate({
+                  componentId: component.id,
+                  isActive,
+                  setting,
+                });
+              }}
             />
           ))}
         </div>
@@ -338,10 +362,12 @@ function ComponentCard({
   component,
   onEdit,
   onDelete,
+  onControl,
 }: {
   component: Room['components'][0];
   onEdit: () => void;
   onDelete: () => void;
+  onControl: (isActive: boolean, setting?: number | null) => void;
 }) {
   const latestPower = component.powerLogs[0];
 
@@ -369,12 +395,24 @@ function ComponentCard({
       </div>
 
       <div className="mt-3 space-y-2">
-        {/* Status */}
-        <div className="flex items-center gap-2">
-          <Power className={`h-4 w-4 ${component.isActive ? 'text-green-600' : 'text-gray-400'}`} />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            {component.isActive ? 'Active' : 'Inactive'}
-          </span>
+        {/* Status with Control Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Power className={`h-4 w-4 ${component.isActive ? 'text-green-600' : 'text-gray-400'}`} />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              {component.isActive ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          <button
+            onClick={() => onControl(!component.isActive, component.setting)}
+            className={`rounded-lg px-3 py-1 text-xs font-medium ${
+              component.isActive
+                ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900 dark:text-red-100'
+                : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-100'
+            }`}
+          >
+            {component.isActive ? 'Turn Off' : 'Turn On'}
+          </button>
         </div>
 
         {/* Setting */}

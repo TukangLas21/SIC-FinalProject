@@ -24,9 +24,7 @@ type Room = {
   name: string;
   description: string | null;
   bslLevel: string;
-  targetPressure: number;
   targetTemp: number;
-  currentPressure: number | null;
   currentTemp: number | null;
   anomalyStatus: string;
   components: Array<{
@@ -363,12 +361,6 @@ function RoomNode({
           <Thermometer className="h-4 w-4 text-blue-600" />
           <span className="text-gray-700">
             {room.currentTemp ? `${room.currentTemp.toFixed(1)}°C` : 'N/A'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Wind className="h-4 w-4 text-cyan-600" />
-          <span className="text-gray-700">
-            {room.currentPressure ? `${room.currentPressure.toFixed(1)} Pa` : 'N/A'}
           </span>
         </div>
       </div>

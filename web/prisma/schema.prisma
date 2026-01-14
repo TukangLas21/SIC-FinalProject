@@ -12,7 +12,6 @@ model Room {
   description    String?
   
   bslLevel       BSLLevel    @default(BSL_1)
-  targetPressure Float       @default(0.0) // Pascals (e.g. -15.0)
   targetTemp     Float       @default(24.0) // Celsius
   
   components     Component[]
@@ -50,10 +49,8 @@ model SensorLog {
   roomId      String
   room        Room     @relation(fields: [roomId], references: [id])
 
-  pressure    Float    // Pascals
   temperature Float    // Celsius
   humidity    Float    // %
-  co2Level    Float?   // PPM
   
   anomalyStatus String? // "NORMAL", "LEAK", "CLOG"
   

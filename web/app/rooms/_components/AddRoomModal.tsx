@@ -13,15 +13,7 @@ export type RoomFormData = {
   name: string;
   description: string;
   bslLevel: string;
-  targetPressure: number;
   targetTemp: number;
-};
-
-const BSL_PRESSURE_DEFAULTS: Record<string, number> = {
-  BSL_1: 0,
-  BSL_2: -5,
-  BSL_3: -15,
-  BSL_4: -30,
 };
 
 export default function AddRoomModal({ isOpen, onClose, onSave }: RoomModalProps) {
@@ -29,18 +21,15 @@ export default function AddRoomModal({ isOpen, onClose, onSave }: RoomModalProps
     name: '',
     description: '',
     bslLevel: 'BSL_1',
-    targetPressure: 0,
     targetTemp: 24.0,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleBslChange = (newBslLevel: string) => {
-    const suggestedPressure = BSL_PRESSURE_DEFAULTS[newBslLevel] ?? 0;
     setFormData({
       ...formData,
       bslLevel: newBslLevel,
-      targetPressure: suggestedPressure,
     });
   };
 
@@ -56,7 +45,6 @@ export default function AddRoomModal({ isOpen, onClose, onSave }: RoomModalProps
         name: '',
         description: '',
         bslLevel: 'BSL_1',
-        targetPressure: 0,
         targetTemp: 24.0,
       });
     } catch (error) {
@@ -126,51 +114,27 @@ export default function AddRoomModal({ isOpen, onClose, onSave }: RoomModalProps
               onChange={(e) => handleBslChange(e.target.value)}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
             >
-              <option value="BSL_1">BSL-1 (Basic) - 0 Pa</option>
-              <option value="BSL_2">BSL-2 (Moderate) - -5 Pa</option>
-              <option value="BSL_3">BSL-3 (High Risk) - -15 Pa</option>
-              <option value="BSL_4">BSL-4 (Maximum Containment) - -30 Pa</option>
+              <option value="BSL_1">BSL-1 (Basic)</option>
+              <option value="BSL_2">BSL-2 (Moderate)</option>
+              <option value="BSL_3">BSL-3 (High Risk)</option>
+              <option value="BSL_4">BSL-4 (Maximum Containment)</option>
             </select>
-            <p className="mt-1 text-xs text-gray-500">
-              Auto-sets recommended target pressure
-            </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Target Pressure */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Target Pressure (Pa)
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={formData.targetPressure}
-                onChange={(e) =>
-                  setFormData({ ...formData, targetPressure: parseFloat(e.target.value) })
-                }
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Negative = containment
-              </p>
-            </div>
-
-            {/* Target Temperature */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Target Temperature (°C)
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={formData.targetTemp}
-                onChange={(e) =>
-                  setFormData({ ...formData, targetTemp: parseFloat(e.target.value) })
-                }
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-              />
-            </div>
+          {/* Target Temperature */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Target Temperature (°C)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={formData.targetTemp}
+              onChange={(e) =>
+                setFormData({ ...formData, targetTemp: parseFloat(e.target.value) })
+              }
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
           </div>
 
           {/* Info Box */}

@@ -9,13 +9,12 @@ type DashboardStats = {
   totalRooms: number;
   activeComponents: number;
   systemStatus: 'SYSTEM_SAFE' | 'ANOMALY_DETECTED';
-  avgPressure: number;
   totalPowerUsage: number;
   timestamp: string;
 };
 
 type TrendData = {
-  pressureTrends: Array<{ time: string; value: number }>;
+  temperatureTrends: Array<{ time: string; value: number }>;
   powerTrends: Array<{ time: string; value: number }>;
   timestamp: string;
 };
@@ -107,12 +106,6 @@ export default function Dashboard() {
           color="purple"
         />
         <StatCard
-          title="Avg Lab Pressure"
-          value={statsLoading ? '...' : `${stats?.avgPressure ?? 0} Pa`}
-          icon={<Gauge className="h-5 w-5" />}
-          color="cyan"
-        />
-        <StatCard
           title="Total Power Usage"
           value={statsLoading ? '...' : `${stats?.totalPowerUsage ?? 0} W`}
           icon={<Zap className="h-5 w-5" />}
@@ -159,10 +152,10 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Pressure Trend */}
+        {/* Temperature Trend */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-950">
           <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-50">
-            Average Lab Pressure (Last Hour)
+            Average Lab Temperature (Last Hour)
           </h3>
           {trendsLoading ? (
             <div className="flex h-64 items-center justify-center text-gray-500">
@@ -170,14 +163,14 @@ export default function Dashboard() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={trends?.pressureTrends ?? []}>
+              <LineChart data={trends?.temperatureTrends ?? []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis
                   dataKey="time"
                   tickFormatter={(time) => new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   stroke="#9CA3AF"
                 />
-                <YAxis stroke="#9CA3AF" label={{ value: 'Pascals', angle: -90, position: 'insideLeft' }} />
+                <YAxis stroke="#9CA3AF" label={{ value: 'Celsius', angle: -90, position: 'insideLeft' }} />
                 <Tooltip
                   labelFormatter={(time) => new Date(time as string).toLocaleTimeString()}
                   contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
@@ -186,9 +179,9 @@ export default function Dashboard() {
                 <Line
                   type="monotone"
                   dataKey="value"
-                  stroke="#06B6D4"
+                  stroke="#F59E0B"
                   strokeWidth={2}
-                  name="Pressure (Pa)"
+                  name="Temperature (°C)"
                   dot={false}
                 />
               </LineChart>

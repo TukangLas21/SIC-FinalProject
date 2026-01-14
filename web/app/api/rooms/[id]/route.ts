@@ -56,13 +56,12 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { bslLevel, targetPressure, targetTemp } = body;
+    const { bslLevel, targetTemp } = body;
 
     const room = await prisma.room.update({
       where: { id },
       data: {
         ...(bslLevel && { bslLevel }),
-        ...(targetPressure !== undefined && { targetPressure }),
         ...(targetTemp !== undefined && { targetTemp }),
       },
     });

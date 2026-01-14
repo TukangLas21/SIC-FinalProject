@@ -5,17 +5,17 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Get pressure trends for the last hour (one data point every 5 minutes)
+    // Get temperature trends for the last hour (one data point every 5 minutes)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     
-    const pressureTrends = await prisma.$queryRaw<Array<{
+    const temperatureTrends = await prisma.$queryRaw<Array<{
       time: Date;
-      avgPressure: number;
+      avgTemp: number;
     }>>`
       SELECT 
         DATE_TRUNC('minute', "createdAt") - 
         INTERVAL '1 minute' * (EXTRACT(minute FROM "createdAt")::int % 5) as time,
-        AVG(pressure) as "avgPressure"
+        AVG(temperature) as "avgTemp"
       FROM "SensorLog"
       WHERE "createdAt" >= ${oneHourAgo}
       GROUP BY time
@@ -40,9 +40,9 @@ export async function GET() {
     `;
 
     return NextResponse.json({
-      pressureTrends: pressureTrends.map((p: any) => ({
+      temperatureTrends: temperatureTrends.map((p: any) => ({
         time: p.time.toISOString(),
-        value: Number(Number(p.avgPressure).toFixed(2))
+        value: Number(Number(p.avgTemp).toFixed(2))
       })),
       powerTrends: powerTrends.map((p: any) => ({
         time: p.time.toISOString(),

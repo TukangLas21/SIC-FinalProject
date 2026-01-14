@@ -35,7 +35,6 @@ export async function GET() {
           where: { roomId: room.id },
           orderBy: { createdAt: 'desc' },
           select: {
-            pressure: true,
             temperature: true,
             anomalyStatus: true
           }
@@ -43,7 +42,6 @@ export async function GET() {
 
         return {
           ...room,
-          currentPressure: latestSensor?.pressure ?? null,
           currentTemp: latestSensor?.temperature ?? null,
           anomalyStatus: latestSensor?.anomalyStatus ?? 'NORMAL'
         };
@@ -63,14 +61,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, description, bslLevel, targetPressure, targetTemp } = body;
+    const { name, description, bslLevel, targetTemp } = body;
 
     const room = await prisma.room.create({
       data: {
         name,
         description: description || null,
         bslLevel: bslLevel || 'BSL_1',
-        targetPressure: targetPressure ?? 0.0,
         targetTemp: targetTemp ?? 24.0,
       },
     });

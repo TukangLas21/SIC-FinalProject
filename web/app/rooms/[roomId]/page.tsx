@@ -25,13 +25,10 @@ type Room = {
   name: string;
   description: string | null;
   bslLevel: string;
-  targetPressure: number;
   targetTemp: number;
   latestSensor: {
-    pressure: number;
     temperature: number;
     humidity: number;
-    co2Level: number | null;
     anomalyStatus: string | null;
     createdAt: string;
   } | null;
@@ -50,13 +47,6 @@ type Room = {
   }>;
 };
 
-const BSL_PRESSURE_DEFAULTS: Record<string, number> = {
-  BSL_1: 0,
-  BSL_2: -5,
-  BSL_3: -15,
-  BSL_4: -30,
-};
-
 export default function RoomDetailPage() {
   const params = useParams();
   const roomId = params.roomId as string;
@@ -65,7 +55,6 @@ export default function RoomDetailPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingComponent, setEditingComponent] = useState<any>(null);
   const [bslLevel, setBslLevel] = useState('');
-  const [targetPressure, setTargetPressure] = useState('');
   const [targetTemp, setTargetTemp] = useState('');
 
   // Fetch room data
@@ -82,14 +71,13 @@ export default function RoomDetailPage() {
   useState(() => {
     if (room) {
       setBslLevel(room.bslLevel);
-      setTargetPressure(room.targetPressure.toString());
       setTargetTemp(room.targetTemp.toString());
     }
   });
 
   // Update room mutation
   const updateRoomMutation = useMutation({
-    mutationFn: async (data: { bslLevel?: string; targetPressure?: number; targetTemp?: number }) => {
+    mutationFn: async (data: { bslLevel?: string; targetTemp?: number }) => {
       const response = await axios.patch(`/api/rooms/${roomId}`, data);
       return response.data;
     },
@@ -146,15 +134,11 @@ export default function RoomDetailPage() {
 
   const handleBslChange = (newBslLevel: string) => {
     setBslLevel(newBslLevel);
-    // Auto-suggest pressure based on BSL level
-    const suggestedPressure = BSL_PRESSURE_DEFAULTS[newBslLevel] ?? 0;
-    setTargetPressure(suggestedPressure.toString());
   };
 
   const handleUpdateRoom = () => {
     updateRoomMutation.mutate({
       bslLevel,
-      targetPressure: parseFloat(targetPressure),
       targetTemp: parseFloat(targetTemp),
     });
   };
@@ -213,7 +197,7 @@ export default function RoomDetailPage() {
 
       {/* Current Sensor Readings */}
       {room.latestSensor && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2">
           <SensorCard
             icon={<Thermometer className="h-5 w-5 text-orange-600" />}
             label="Temperature"
@@ -221,20 +205,9 @@ export default function RoomDetailPage() {
             target={`Target: ${room.targetTemp}°C`}
           />
           <SensorCard
-            icon={<Wind className="h-5 w-5 text-cyan-600" />}
-            label="Pressure"
-            value={`${room.latestSensor.pressure.toFixed(1)} Pa`}
-            target={`Target: ${room.targetPressure} Pa`}
-          />
-          <SensorCard
             icon={<Droplets className="h-5 w-5 text-blue-600" />}
             label="Humidity"
             value={`${room.latestSensor.humidity.toFixed(1)}%`}
-          />
-          <SensorCard
-            icon={<Wind className="h-5 w-5 text-gray-600" />}
-            label="CO₂ Level"
-            value={room.latestSensor.co2Level ? `${room.latestSensor.co2Level.toFixed(0)} PPM` : 'N/A'}
           />
         </div>
       )}
@@ -242,7 +215,7 @@ export default function RoomDetailPage() {
       {/* BSL Configuration Form */}
       <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-950">
         <h2 className="mb-4 text-xl font-semibold text-gray-900 dark:text-gray-50">BSL Configuration</h2>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               BSL Level
@@ -257,24 +230,6 @@ export default function RoomDetailPage() {
               <option value="BSL_3">BSL-3 (High Risk)</option>
               <option value="BSL_4">BSL-4 (Maximum Containment)</option>
             </select>
-            <p className="mt-1 text-xs text-gray-500">
-              Auto-adjusts target pressure
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Target Pressure (Pa)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={targetPressure}
-              onChange={(e) => setTargetPressure(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Negative = safer containment
-            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">

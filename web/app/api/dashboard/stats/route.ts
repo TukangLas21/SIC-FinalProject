@@ -16,19 +16,15 @@ export async function GET() {
     // Get latest sensor logs for all rooms to check anomalies
     const latestSensorLogs = await prisma.$queryRaw<Array<{
       roomId: string;
-      pressure: number;
       temperature: number;
       humidity: number;
-      co2Level: number | null;
       anomalyStatus: string | null;
       createdAt: Date;
     }>>`
       SELECT DISTINCT ON (s."roomId")
         s."roomId",
-        s.pressure,
         s.temperature,
         s.humidity,
-        s."co2Level",
         s."anomalyStatus",
         s."createdAt"
       FROM "SensorLog" s
@@ -39,11 +35,6 @@ export async function GET() {
     const hasAnomaly = latestSensorLogs.some(
       (log: any) => log.anomalyStatus && log.anomalyStatus !== 'NORMAL'
     );
-
-    // Calculate average pressure
-    const avgPressure = latestSensorLogs.length > 0
-      ? latestSensorLogs.reduce((sum: number, log: any) => sum + log.pressure, 0) / latestSensorLogs.length
-      : 0;
 
     // Calculate total power usage from last 5 minutes
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -64,7 +55,6 @@ export async function GET() {
       totalRooms,
       activeComponents,
       systemStatus: hasAnomaly ? 'ANOMALY_DETECTED' : 'SYSTEM_SAFE',
-      avgPressure: Number(avgPressure.toFixed(2)),
       totalPowerUsage: Number(totalPowerUsage.toFixed(2)),
       timestamp: new Date().toISOString()
     });

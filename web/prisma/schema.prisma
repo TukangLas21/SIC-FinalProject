@@ -19,6 +19,10 @@ model Room {
   sensorLogs     SensorLog[]
   usageLogs      UsageLog[]
   
+  // Airflow connections
+  airflowsFrom   AirflowConnection[] @relation("SourceRoom")
+  airflowsTo     AirflowConnection[] @relation("TargetRoom")
+  
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 }
@@ -81,6 +85,34 @@ model UsageLog {
   
   startTime DateTime @default(now())
   endTime   DateTime?
+}
+
+model AirflowConnection {
+  id          String   @id @default(cuid())
+  
+  sourceRoomId String
+  sourceRoom   Room    @relation("SourceRoom", fields: [sourceRoomId], references: [id], onDelete: Cascade)
+  
+  targetRoomId String
+  targetRoom   Room    @relation("TargetRoom", fields: [targetRoomId], references: [id], onDelete: Cascade)
+  
+  flowType     FlowType @default(EXHAUST) // INTAKE or EXHAUST
+  flowRate     Float?   // CFM (Cubic Feet per Minute) - optional
+  isActive     Boolean  @default(true)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Prevent duplicate connections in same direction
+  @@unique([sourceRoomId, targetRoomId])
+  @@index([sourceRoomId])
+  @@index([targetRoomId])
+}
+
+enum FlowType {
+  INTAKE   // Fresh air coming into the room
+  EXHAUST  // Air being exhausted out of the room
+  TRANSFER // Room-to-room transfer
 }
 
 enum BSLLevel {

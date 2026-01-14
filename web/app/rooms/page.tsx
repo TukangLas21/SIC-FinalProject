@@ -17,6 +17,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { AlertCircle, CheckCircle2, Wind, Thermometer, Plus } from 'lucide-react';
 import AddRoomModal, { RoomFormData } from './_components/AddRoomModal';
+import ConnectionModal from './_components/ConnectionModal';
 
 type Room = {
   id: string;
@@ -40,10 +41,23 @@ type Room = {
   };
 };
 
+type AirflowConnection = {
+  id: string;
+  sourceRoomId: string;
+  targetRoomId: string;
+  flowType: 'INTAKE' | 'EXHAUST' | 'TRANSFER';
+  flowRate: number | null;
+  isActive: boolean;
+  sourceRoom: { id: string; name: string };
+  targetRoom: { id: string; name: string };
+};
+
 export default function RoomsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [pendingConnection, setPendingConnection] = useState<{ source: string; target: string } | null>(null);
 
   // Fetch rooms data
   const { data: rooms, isLoading } = useQuery<Room[]>({
@@ -54,7 +68,27 @@ export default function RoomsPage() {
     },
   });
 
-  // Create room mutation
+  // Fetch airflow connections
+  const { data: airflowConnections } = useQuery<AirflowConnection[]>({
+    queryKey: ['airflow-connections'],
+    queryFn: async () => {
+      const response = await axios.get('/api/airflow');
+      return response.data;
+    },
+  });
+
+  // 
+
+  // Create airflow connection mutation
+  const createAirflowMutation = useMutation({
+    mutationFn: async (data: { sourceRoomId: string; targetRoomId: string; flowType?: string }) => {
+      const response = await axios.post('/api/airflow', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['airflow-connections'] });
+    },
+  });
   const createRoomMutation = useMutation({
     mutationFn: async (data: RoomFormData) => {
       const response = await axios.post('/api/rooms', data);
@@ -114,67 +148,34 @@ export default function RoomsPage() {
           padding: 0,
         },
       });
+    });
 
-      // Create edges representing airflow
-      // Intake -> Room
-      if (hasIntakeFan) {
+    // Add stored airflow connections from database
+    if (airflowConnections) {
+      airflowConnections.forEach((connection) => {
+        if (!connection.isActive) return;
+
+        const edgeStyle = 
+          connection.flowType === 'INTAKE' 
+            ? { stroke: '#10B981', strokeWidth: 2 }
+            : connection.flowType === 'EXHAUST'
+            ? { stroke: '#EF4444', strokeWidth: 2 }
+            : { stroke: '#8B5CF6', strokeWidth: 2, strokeDasharray: '5,5' };
+
         edges.push({
-          id: `intake-${room.id}`,
-          source: 'air-source',
-          target: room.id,
-          label: 'Intake',
+          id: connection.id,
+          source: connection.sourceRoomId,
+          target: connection.targetRoomId,
+          label: connection.flowType,
           animated: true,
-          style: { stroke: '#10B981', strokeWidth: 2 },
+          style: edgeStyle,
           type: 'smoothstep',
         });
-      }
-
-      // Room -> Exhaust
-      if (hasExhaustFan) {
-        edges.push({
-          id: `exhaust-${room.id}`,
-          source: room.id,
-          target: 'air-exhaust',
-          label: 'Exhaust',
-          animated: true,
-          style: { stroke: '#EF4444', strokeWidth: 2 },
-          type: 'smoothstep',
-        });
-      }
-    });
-
-    // Add virtual "Air Source" and "Exhaust" nodes
-    nodes.push({
-      id: 'air-source',
-      type: 'input',
-      position: { x: -300, y: (nodes.length / columns / 2) * (nodeHeight + verticalSpacing) },
-      data: { label: '🌬️ Fresh Air Source' },
-      style: {
-        background: '#D1FAE5',
-        border: '2px solid #10B981',
-        borderRadius: '8px',
-        fontWeight: 'bold',
-      },
-    });
-
-    nodes.push({
-      id: 'air-exhaust',
-      type: 'output',
-      position: {
-        x: columns * (nodeWidth + horizontalSpacing) + 100,
-        y: (nodes.length / columns / 2) * (nodeHeight + verticalSpacing),
-      },
-      data: { label: '💨 Exhaust Output' },
-      style: {
-        background: '#FEE2E2',
-        border: '2px solid #EF4444',
-        borderRadius: '8px',
-        fontWeight: 'bold',
-      },
-    });
+      });
+    }
 
     return { initialNodes: nodes, initialEdges: edges };
-  }, [rooms]);
+  }, [rooms, airflowConnections]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -194,21 +195,58 @@ export default function RoomsPage() {
     [router]
   );
 
-  // Enable manual connections between nodes
+  // Enable manual connections between nodes - open modal to configure
   const onConnect = useCallback(
     (connection: any) => {
-      setEdges((eds) => [
-        ...eds,
-        {
-          ...connection,
-          id: `manual-${connection.source}-${connection.target}`,
-          label: 'Custom Airflow',
-          style: { stroke: '#9333EA', strokeWidth: 2, strokeDasharray: '5,5' },
-          type: 'smoothstep',
-        },
-      ]);
+      setPendingConnection({
+        source: connection.source,
+        target: connection.target,
+      });
+      setIsConnectionModalOpen(true);
     },
-    [setEdges]
+    []
+  );
+
+  // Handle connection save from modal
+  const handleConnectionSave = useCallback(
+    async (config: { flowType: string; flowRate: number | null; isActive: boolean }) => {
+      if (!pendingConnection) return;
+
+      // Optimistically add edge to UI
+      const tempEdge = {
+        id: `temp-${pendingConnection.source}-${pendingConnection.target}`,
+        source: pendingConnection.source,
+        target: pendingConnection.target,
+        label: config.flowType,
+        animated: true,
+        style:
+          config.flowType === 'INTAKE'
+            ? { stroke: '#10B981', strokeWidth: 2 }
+            : config.flowType === 'EXHAUST'
+            ? { stroke: '#EF4444', strokeWidth: 2 }
+            : { stroke: '#8B5CF6', strokeWidth: 2, strokeDasharray: '5,5' },
+        type: 'smoothstep',
+      };
+
+      setEdges((eds) => [...eds, tempEdge]);
+      setIsConnectionModalOpen(false);
+      setPendingConnection(null);
+
+      // Save to database
+      try {
+        await createAirflowMutation.mutateAsync({
+          sourceRoomId: pendingConnection.source,
+          targetRoomId: pendingConnection.target,
+          ...config,
+        });
+      } catch (error) {
+        console.error('Failed to create airflow connection:', error);
+        // Remove temp edge on error
+        setEdges((eds) => eds.filter((e) => e.id !== tempEdge.id));
+        alert('Failed to create connection. It may already exist.');
+      }
+    },
+    [pendingConnection, setEdges, createAirflowMutation]
   );
 
   if (isLoading) {
@@ -269,6 +307,26 @@ export default function RoomsPage() {
         onSave={async (data) => {
           await createRoomMutation.mutateAsync(data);
         }}
+      />
+
+      {/* Connection Configuration Modal */}
+      <ConnectionModal
+        isOpen={isConnectionModalOpen}
+        sourceRoomName={
+          pendingConnection
+            ? rooms?.find((r) => r.id === pendingConnection.source)?.name || 'Unknown'
+            : ''
+        }
+        targetRoomName={
+          pendingConnection
+            ? rooms?.find((r) => r.id === pendingConnection.target)?.name || 'Unknown'
+            : ''
+        }
+        onClose={() => {
+          setIsConnectionModalOpen(false);
+          setPendingConnection(null);
+        }}
+        onSave={handleConnectionSave}
       />
     </div>
   );

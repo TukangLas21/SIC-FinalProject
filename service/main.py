@@ -7,13 +7,17 @@ Architecture:
 - Stores data in PostgreSQL
 - Exposes REST API for web frontend
 - Publishes control commands to hardware (MQTT)
+- AI Integration: Anomaly detection and AC control predictions
 """
 
 import json
 import os
+import pickle
+import time
 from datetime import datetime
 from typing import Optional
 
+import numpy as np
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -29,6 +33,10 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_CLIENT_ID = "bsl_iot_service"
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# AI Model Paths
+ANOMALY_MODEL_PATH = "../ai/anomaly_detection_model.pkl"
+AC_CONTROL_MODEL_PATH = "../ai/ac_control_model.pkl"
 
 # ==================== FastAPI App ====================
 app = FastAPI(title="BSL Lab IoT Service", version="1.0.0")
@@ -46,6 +54,30 @@ app.add_middleware(
 def get_db_connection():
     """Get PostgreSQL connection"""
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+
+# ==================== Load AI Models ====================
+anomalies_model = None
+ac_control_model = None
+
+try:
+    with open(ANOMALY_MODEL_PATH, "rb") as f:
+        anomaly_model = pickle.load(f)
+    print(f"✅ Loaded anomaly detection model")
+except Exception as e:
+    print(f"⚠️  Anomaly model not loaded: {e}")
+    anomaly_model = None
+
+try:
+    with open(AC_CONTROL_MODEL_PATH, "rb") as f:
+        ac_control_model = pickle.load(f)
+    print(f"✅ Loaded AC control model")
+except Exception as e:
+    print(f"⚠️  AC control model not loaded: {e}")
+    ac_control_model = None
+
+# Store latest sensor data for AI processing
+latest_sensor_data = {}
 
 
 # ==================== MQTT Topics Structure ====================
@@ -81,7 +113,10 @@ def on_connect(client, userdata, flags, rc, properties=None):
     client.subscribe("lab/room/+/sensor/#")
     client.subscribe("lab/component/+/power")
     client.subscribe("lab/component/+/status")
-    print("📡 Subscribed to sensor and power topics")
+    
+    # Subscribe to firmware sensor data (for AI processing)
+    client.subscribe("lab/room-01/sensors")
+    print("📡 Subscribed to sensor, power, and AI topics")
 
 
 def on_message(client, userdata, msg):
@@ -93,7 +128,11 @@ def on_message(client, userdata, msg):
         # Parse topic to determine message type
         parts = topic.split("/")
         
-        if "sensor" in topic and "all" in topic:
+        if topic == "lab/room-01/sensors":
+            # Firmware sensor data (for AI processing)
+            handle_firmware_sensor_data(payload)
+            
+        elif "sensor" in topic and "all" in topic:
             # Full sensor reading: lab/room/{room_id}/sensor/all
             room_id = parts[2]
             handle_sensor_data(room_id, payload)
@@ -200,6 +239,124 @@ def handle_component_status(component_id: str, payload: str):
         
     except Exception as e:
         print(f"❌ Error updating component status: {e}")
+
+
+# ==================== AI Functions ====================
+
+def detect_anomaly(sensor_data):
+    """Detect anomalies using ML model"""
+    if anomaly_model is None:
+        return False
+    
+    try:
+        features = np.array([[
+            sensor_data["temp"],
+            sensor_data["hum"],
+            sensor_data["fan_in"],
+            sensor_data["fan_ex"],
+            sensor_data["amps"]
+        ]])
+        
+        prediction = anomaly_model.predict(features)[0]
+        is_anomaly = (prediction == -1)
+        
+        if is_anomaly:
+            print(f"⚠️  ANOMALY DETECTED: Temp={sensor_data['temp']}°C, Hum={sensor_data['hum']}%")
+        
+        return is_anomaly
+        
+    except Exception as e:
+        print(f"❌ Anomaly detection error: {e}")
+        return False
+
+
+def predict_ac_setting(sensor_data, target_temp=24.0):
+    """Predict optimal AC fan speed using ML model"""
+    if ac_control_model is None:
+        return 50.0
+    
+    try:
+        features = np.array([[
+            sensor_data["temp"],
+            sensor_data["hum"],
+            target_temp
+        ]])
+        
+        predicted_speed = ac_control_model.predict(features)[0]
+        predicted_speed = np.clip(predicted_speed, 0, 100)
+        
+        print(f"🤖 AC Prediction: {sensor_data['temp']}°C → {predicted_speed:.1f}% fan speed")
+        
+        return float(predicted_speed)
+        
+    except Exception as e:
+        print(f"❌ AC control prediction error: {e}")
+        return 50.0
+
+
+def send_fan_command(target, speed):
+    """Send fan control command via MQTT"""
+    command = {
+        "id": f"{target}_cmd_{int(time.time())}",
+        "type": "SET_FAN",
+        "target": target,
+        "val": round(speed, 1)
+    }
+    
+    mqtt_client.publish("lab/room-01/commands", json.dumps(command), qos=1)
+    print(f"📤 Sent {target} command: {speed:.1f}%")
+
+
+def handle_firmware_sensor_data(payload: str):
+    """Process firmware sensor data and run AI analysis"""
+    global latest_sensor_data
+    
+    try:
+        data = json.loads(payload)
+        latest_sensor_data = data
+        
+        print(f"📊 Firmware Data: Temp={data.get('temp')}°C, Hum={data.get('hum')}%, Fan In={data.get('fan_in')}%")
+        
+        # Store in database
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Determine anomaly status
+        is_anomaly = detect_anomaly(data)
+        anomaly_status = "ANOMALY" if is_anomaly else "NORMAL"
+        
+        cur.execute("""
+            INSERT INTO "SensorLog" (
+                "roomId", temperature, humidity,
+                "anomalyStatus", "createdAt"
+            ) VALUES (%s, %s, %s, %s, %s)
+        """, (
+            "room-01",
+            data.get("temp", 0.0),
+            data.get("hum", 0.0),
+            anomaly_status,
+            datetime.now()
+        ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # Run AI control logic
+        target_temp = 24.0
+        recommended_speed = predict_ac_setting(data, target_temp)
+        current_speed = data.get("fan_in", 0)
+        
+        # Adaptive control: only update if significant difference
+        if abs(recommended_speed - current_speed) > 5.0:
+            send_fan_command("ac", recommended_speed)
+        
+        # Emergency response on anomaly
+        if is_anomaly:
+            send_fan_command("exhaust", 100.0)
+        
+    except Exception as e:
+        print(f"❌ Error processing firmware sensor data: {e}")
 
 
 # Set MQTT callbacks
